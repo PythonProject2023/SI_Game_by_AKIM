@@ -10,6 +10,12 @@ from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen, ScreenManager
 from kivy.uix.slider import Slider
 from kivy.uix.textinput import TextInput
+from parser import parse_package
+from server import server_starter
+from master_back import master_starter
+from master_back import semop_window
+import threading
+import time
 
 
 class MainMenu(Screen):
@@ -80,13 +86,28 @@ class CreateGame(Screen):
         players_count = int(self.players_slider.value)
         package_path = self.package_path.text
 
+
         # создание комнаты
         print("Создание комнаты")
         print(f"Название игры: {game_name}")
         print(f"Пароль: {password}")
-        print(f"Количество игроков: {players_count}")
+        print(f"Количество игроков:server_thread = multiprocessing.Process(target = server_starter, args=(game_name, password, package_path, players_count))
+        server_thread.start()
+        print("HELLO PUPPY") {players_count}")
         print(f"Путь к пакету: {package_path}")
 
+        print("HELLO THERE")
+        server_thread = threading.Thread(target = server_starter, args=(game_name, password, package_path, players_count), daemon = True)
+        server_thread.start()
+        print("HELLO PUPPY")
+        time.sleep(0.1)
+        parent_conn, child_conn = multiprocessing.Pipe()
+        print("HELLO MASTER")
+        master_thread = threading.Thread(target = master_starter, args=(game_name, password, package_path, players_count, child_conn))
+        master_thread.start()
+        semop_window.acquire()
+        print("HELLO FRIEND")
+        self.manager.add_widget(Game(parent_conn, name="game"))       
         # Переход на экран игры после создания комнаты
         self.manager.current = "game"
 
@@ -127,9 +148,27 @@ class JoinGame(Screen):
         # Переход на экран игры после присоединения к комнате
         self.manager.current = "game"
 
+def activate_question_screen(*args):
+    
+    return new_func
 
 class Game(Screen):
-    pass
+    def __init__(self, parent_conn, **kwargs):
+        game_params = parent_conn.recv()
+        super(Game, self).__init__(**kwargs)
+        self.layout = GridLayout(cols=game_params['table_size'][1]+1, padding=10, spacing=10)
+        self.buttons = []
+        for th in game_params['table']:
+            self.layout.add_widget(Label(text=th, font_size=20))
+            for q in game_params['table'][th]:
+                but_func = activate_question_screen(self.layout, th, q)
+                button = Button(
+                    text=str(q),
+                    size_hint=(1, 0.2),
+                    on_release=but_func,
+                )
+                self.layout.add_widget(button)
+        self.add_widget(self.layout)
 
 
 class Rules(Screen):
@@ -166,6 +205,8 @@ class MyApp(App):
         screen_manager.add_widget(CreateGame(name="create_game"))
         screen_manager.add_widget(JoinGame(name="join_game"))
         screen_manager.add_widget(Rules(name="rules"))
-        screen_manager.add_widget(Game(name="game"))
+        ## screen_manager.add_widget(Game(name="game"))
 
         return screen_manager
+
+MyApp().run()
