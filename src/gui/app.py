@@ -14,9 +14,13 @@ from parser import parse_package
 from server import server_starter
 from master_back import master_starter
 from master_back import semop_window
+from master_back import semop_window
+import multiprocessing
 import threading
 import time
+import socket
 
+sock = None
 
 class MainMenu(Screen):
     def __init__(self, **kwargs):
@@ -91,23 +95,15 @@ class CreateGame(Screen):
         print("Создание комнаты")
         print(f"Название игры: {game_name}")
         print(f"Пароль: {password}")
-        print(f"Количество игроков:server_thread = multiprocessing.Process(target = server_starter, args=(game_name, password, package_path, players_count))
-        server_thread.start()
-        print("HELLO PUPPY") {players_count}")
+        print(f"Количество игроков: {players_count}")
         print(f"Путь к пакету: {package_path}")
 
         print("HELLO THERE")
-        server_thread = threading.Thread(target = server_starter, args=(game_name, password, package_path, players_count), daemon = True)
+        server_thread = multiprocessing.Process(target = server_starter, args=(game_name, password, package_path, players_count))
         server_thread.start()
         print("HELLO PUPPY")
         time.sleep(0.1)
-        parent_conn, child_conn = multiprocessing.Pipe()
-        print("HELLO MASTER")
-        master_thread = threading.Thread(target = master_starter, args=(game_name, password, package_path, players_count, child_conn))
-        master_thread.start()
-        semop_window.acquire()
-        print("HELLO FRIEND")
-        self.manager.add_widget(Game(parent_conn, name="game"))       
+        self.manager.add_widget(Game(game_name, password, package_path, players_count, name="game"))       
         # Переход на экран игры после создания комнаты
         self.manager.current = "game"
 
@@ -148,27 +144,130 @@ class JoinGame(Screen):
         # Переход на экран игры после присоединения к комнате
         self.manager.current = "game"
 
-def activate_question_screen(*args):
+def choose_button(th, q):
+    def func(arg):
+        global sock
+        request = f"choose {th} {q}"
+        print(f"CLIENT {request}")
+        sock.send((request+'\n').encode())
+    return func
     
-    return new_func
+def answer_button():
+    def func(arg):
+        global sock
+        request = "answer"
+        print(f"CLIENT {request}")
+        sock.send((request+'\n').encode())
+    return func
 
-class Game(Screen):
-    def __init__(self, parent_conn, **kwargs):
-        game_params = parent_conn.recv()
+def result_button():
+    ## вместо result должен быть текст из текстового поля с ответом пользователя
+    def func(arg):
+        global sock
+        request = "result RESULT"
+        print(f"CLIENT {request}")
+        sock.send((request+'\n').encode())
+    return func
+
+def my_read():
+    """Функция, читающая из сокета."""
+    global sock
+    time.sleep(0.1)
+    while True:
+        res = sock.recv(4096)
+        res = res.decode().split()
+        match res[0]:
+            case "choose":
+                print("CHOOSE", res)
+            case "answer":
+                print("ANSWER", res)
+            case "result":
+                print("RIGHT", res)
+    return True
+
+
+class Game(Screen): 
+    def __init__(self, game_name, password, package_path, players_count, **kwargs):
+        global sock
+        package = parse_package(package_path)
+        cur_round = package.rounds[1]
+        print("ALL ROUNDS", package.rounds)
+        print("CUR_ROUND", cur_round)
+        themes = cur_round.themes
+        cur_table = {th: [q for q in themes[th].questions] for th in themes}
+        table_size = (len(cur_table), len(cur_table[list(cur_table.keys())[0]]))
+        print("TABLE SIZE", table_size)
+        game_params = {"table_size": table_size, "table": cur_table, "game_name": game_name, "players_count": players_count, "players": ["masha" for i in range(players_count)]}
+        self.player_name = 'master_oogway'
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect(('localhost', 1320))
+        sock.send((f"{self.player_name}\n").encode())
+        res = sock.recv(4096)
+        print(f"RECEIVED {res}")
+        print(password.encode())
+        sock.send((password + '\n').encode())
+        res = sock.recv(4096)
+        print(f"RECEIVED {res}")
+        print("Starting reader")
+        reader_thread = threading.Thread(target = my_read, daemon = True)
+        reader_thread.start()
+        print("Started reader")
+        
+
         super(Game, self).__init__(**kwargs)
-        self.layout = GridLayout(cols=game_params['table_size'][1]+1, padding=10, spacing=10)
-        self.buttons = []
+        layout = BoxLayout(orientation='vertical')
+        players = game_params["players"]
+        players_layout = GridLayout(rows=2, cols=len(players), spacing=10)
+        ##for p in players:
+        ##    players_layout.add_widget() #some pic
+        for p in players:
+            players_layout.add_widget(Label(text=p, font_size=20)) #name
+        for p in players:
+            players_layout.add_widget(Label(text='0', font_size=20)) #score
+            
+        game_field = BoxLayout(orientation='horizontal')
+        q_table = GridLayout(cols=game_params['table_size'][1]+1, padding=10, spacing=10)
+        buttons = []
         for th in game_params['table']:
-            self.layout.add_widget(Label(text=th, font_size=20))
+            q_table.add_widget(Label(text=th, font_size=20))
             for q in game_params['table'][th]:
-                but_func = activate_question_screen(self.layout, th, q)
+                but_func = choose_button(th, q)
                 button = Button(
                     text=str(q),
                     size_hint=(1, 0.2),
                     on_release=but_func,
                 )
-                self.layout.add_widget(button)
-        self.add_widget(self.layout)
+                q_table.add_widget(button)
+        game_field.add_widget(q_table)
+        game_field.add_widget(Label(text='Ищи вопрос тут', font_size=20, text_size=(1,1)))
+        
+        gamer_tools = BoxLayout(orientation='horizontal')
+        gamer_tools.add_widget(Label(text='4:20', size=(10,10)))
+        gamer_tools.add_widget(Button(text='Кнопка'))
+        
+        layout.add_widget(players_layout)
+        layout.add_widget(game_field)
+        layout.add_widget(gamer_tools)
+        self.add_widget(layout)
+        ##func = choose_button("animals", 100)
+        ##button = Button(
+        ##            text="test choose",
+        ##            on_release=func,
+        ##        )
+        ##self.layout.add_widget(button)
+        ##func = answer_button()
+        ##button = Button(
+        ##            text="test answer",
+        ##            on_release=func,
+        ##        )
+        ##self.layout.add_widget(button)
+        ##func = result_button()
+        ##button = Button(
+        ##            text="test result",
+        ##            on_release=func,
+        ##        )
+        ##self.layout.add_widget(button)
+        ##self.add_widget(self.layout)
 
 
 class Rules(Screen):

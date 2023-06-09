@@ -9,41 +9,33 @@ game_params = None
 
 
 class Player:
-    semop_answer = multiprocessing.Semaphore(value=0)
-    semop_request = multiprocessing.Semaphore(value=0)
-    fin_semop = multiprocessing.Semaphore(value=0)
-    answer = ''
-    request = ''
-    waiting = False
 
+    def choose_button(cls, th, q):
+        request = f"choose {th} {q}".encode()
+        cls.sock.send(request)
+    
+    def answer_button(self):
+        request = "answer"
+        self.sock.send(request)
+
+    def result_button(self):
+        ## вместо result должен быть текст из текстового поля с ответом пользователя
+        request = "result RESULT"
+        self.sock.send(request)
 
     def my_read(self, sock):
         """Функция, читающая из сокета."""
         time.sleep(0.1)
         while True:
             res = sock.recv(4096)
-            res = res.decode()
-            if res == 'quit':
-                print("READER DONE")
-                sock.send('bye'.encode())
-                self.fin_semop.release()
-                break
-
-            answer = res
-            self.semop_answer.release()
-            waiting = False
-        return True
-
-    def my_write(self):
-        """Функция, пишущая в сокет."""
-        global request
-        while True:
-            self.semop_request.acquire()
-            self.sock.send(request)
-            if request == b"'quit'\n":
-                print("WRITER DONE")
-                self.fin_semop.release()
-                break
+            res = res.decode().split()
+            match res[0]:
+                case "choose":
+                    print("CHOOSE", res)
+                case "answer":
+                    print("ANSWER", res)
+                case "right":
+                    print("RIGHT", res)
         return True
 
     def play(self, game_name, players_count):
@@ -51,22 +43,9 @@ class Player:
 
 
     def __init__(self, game_name, password, package_path, players_count, child_conn):
-        global game_params
-        package = parse_package(package_path)
-        cur_round = package.rounds[1]
-        print("ALL ROUNDS", package.rounds)
-        print("CUR_ROUND", cur_round)
-        themes = cur_round.themes
-        cur_table = {th: [q for q in themes[th].questions] for th in themes}
-        table_size = (len(cur_table), len(cur_table[list(cur_table.keys())[0]]))
-        print("TABLE SIZE", table_size)
-        game_params = {"table_size": table_size, "table": cur_table, "game_name": game_name, "players_count": players_count, "players": ["" for i in range(players_count)]}
-        print("WTF", game_params)
-        child_conn.send(game_params)
-        semop_window.release()
         self.name = 'master_oogway'
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.connect(('localhost', 1338))
+        self.sock.connect(('localhost', 1340))
         self.sock.send((f"{self.name}\n").encode())
         self.res = self.sock.recv(4096)
 
