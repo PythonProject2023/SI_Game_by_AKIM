@@ -10,6 +10,7 @@ import gettext
 clients = {}
 master = ''
 password = 'password'
+pack_string = ''
 
 
 async def SIG(reader, writer):
@@ -117,7 +118,7 @@ async def main(game_name, real_password, package_path, players_count):
     global password
     password = real_password
     print("STARING SERVER")
-    server = await asyncio.start_server(SIG, '0.0.0.0', 1320)
+    server = await asyncio.start_server(SIG, '0.0.0.0', 1332)
     print("SERVER STARTED")
     async with server:
         await server.serve_forever()

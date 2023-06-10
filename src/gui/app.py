@@ -144,8 +144,10 @@ class JoinGame(Screen):
         # Переход на экран игры после присоединения к комнате
         self.manager.current = "game"
 
-def choose_button(th, q):
+def choose_button(th, q, q_label):
     def func(arg):
+        arg.text = ''
+        q_label.text = f"question {th} {q}"
         global sock
         request = f"choose {th} {q}"
         print(f"CLIENT {request}")
@@ -200,7 +202,7 @@ class Game(Screen):
         game_params = {"table_size": table_size, "table": cur_table, "game_name": game_name, "players_count": players_count, "players": ["masha" for i in range(players_count)]}
         self.player_name = 'master_oogway'
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(('localhost', 1320))
+        sock.connect(('localhost', 1332))
         sock.send((f"{self.player_name}\n").encode())
         res = sock.recv(4096)
         print(f"RECEIVED {res}")
@@ -225,13 +227,13 @@ class Game(Screen):
         for p in players:
             players_layout.add_widget(Label(text='0', font_size=20)) #score
             
-        game_field = BoxLayout(orientation='horizontal')
+        game_field = GridLayout(cols=2, padding=10, spacing=10)
         q_table = GridLayout(cols=game_params['table_size'][1]+1, padding=10, spacing=10)
-        buttons = []
+        q_label = Label(text='Ищи вопрос тут', font_size=40)
         for th in game_params['table']:
             q_table.add_widget(Label(text=th, font_size=20))
             for q in game_params['table'][th]:
-                but_func = choose_button(th, q)
+                but_func = choose_button(th, q, q_label)
                 button = Button(
                     text=str(q),
                     size_hint=(1, 0.2),
@@ -239,8 +241,7 @@ class Game(Screen):
                 )
                 q_table.add_widget(button)
         game_field.add_widget(q_table)
-        game_field.add_widget(Label(text='Ищи вопрос тут', font_size=20, text_size=(1,1)))
-        
+        game_field.add_widget(q_label)
         gamer_tools = BoxLayout(orientation='horizontal')
         gamer_tools.add_widget(Label(text='4:20', size=(10,10)))
         gamer_tools.add_widget(Button(text='Кнопка'))
