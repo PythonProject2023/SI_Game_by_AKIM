@@ -45,6 +45,8 @@ async def SIG(reader, writer):
     got_password = res.decode()[:-1]
     print(f"{got_password} received")
     if got_password == password:
+        for cur_name in clients:
+            await clients[cur_name].put(f'connect {name}')
         writer.write(("hello").encode())
         await writer.drain()
         ##for cur_name in clients:
@@ -74,23 +76,8 @@ async def SIG(reader, writer):
                 # принимаем команду от клиента и разбиваем ее на аргументы
                 send = asyncio.create_task(reader.readline())
                 cur_rcv = q.result().decode()
-                parsed_cmd = shlex.split(cur_rcv)
-                for_master = False
-
-                match parsed_cmd[0]:
-                    case 'quit':
-                        break
-                    case 'result':
-                        for_master = True
-                
-                if for_master:
-                    await clients[master].put(cur_rcv)
-
-                else:
-                    for cur_name in clients:
-                        await clients[cur_name].put(cur_rcv)
-
-
+                for cur_name in clients:
+                    await clients[cur_name].put(cur_rcv)
             elif q is receive:
                 # достаем результат из очереди и посылаем его клиенту
                 receive = asyncio.create_task(clients[name].get())
@@ -98,11 +85,9 @@ async def SIG(reader, writer):
                 print(f"SERVER HAS RECEIVED {cur_rcv}")
                 writer.write(cur_rcv.encode())
                 await writer.drain()
-
         else:
             continue
         break
-
     # закрываем соединение
     send.cancel()
     receive.cancel()
@@ -127,8 +112,8 @@ async def main(game_name, real_password, package_path, players_count):
     print("ALL ROUNDS", package.rounds)
     print("CUR_ROUND", cur_round)
     themes = cur_round.themes
-    cur_table = {th: {str(q): themes[th].questions[q].text for q in themes[th].questions} for th in themes}
-    table_size = (len(cur_table), len(cur_table[list(cur_table.keys())[0]]))
+    cur_table = {th: {str(q): themes[th].get_question(q).get_text() for q in themes[th].questions} for th in themes}
+    table_size = (len(cur_table), max([len(themes[th].questions) for th in themes]))
     print("TABLE SIZE", table_size)
     game_params = {"table_size": table_size,
                    "table": cur_table,
@@ -137,7 +122,7 @@ async def main(game_name, real_password, package_path, players_count):
                    "players": []}   
     password = real_password
     print("STARING SERVER")
-    server = await asyncio.start_server(SIG, '0.0.0.0', 1336)
+    server = await asyncio.start_server(SIG, '0.0.0.0', 1329)
     print("SERVER STARTED")
     async with server:
         await server.serve_forever()

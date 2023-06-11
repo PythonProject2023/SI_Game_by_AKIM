@@ -2,6 +2,7 @@ import zipfile
 from pathlib import Path
 import sys
 import xml.etree.ElementTree as ET
+import urllib.parse
 
 
 class Answer:
@@ -9,9 +10,9 @@ class Answer:
         self.right = right
         self.wrong = wrong
         self.text = text
-        self.image = image
-        self.sound = sound
-        self.video = video
+        self.image = urllib.parse.quote(image.encode('utf-8')) if image is not None else None
+        self.sound = urllib.parse.quote(sound.encode('utf-8')) if sound is not None else None
+        self.video = urllib.parse.quote(video.encode('utf-8')) if video is not None else None
 
     def get_right(self):
         return self.right
@@ -37,9 +38,9 @@ class Question:
     def __init__(self, price, text=None, image=None, sound=None, video=None):
         self.price = price
         self.text = text
-        self.image = image
-        self.sound = sound
-        self.video = video
+        self.image = urllib.parse.quote(image.encode('utf-8')) if image is not None else None
+        self.sound = urllib.parse.quote(sound.encode('utf-8')) if sound is not None else None
+        self.video = urllib.parse.quote(video.encode('utf-8')) if video is not None else None
 
     def get_price(self):
         return self.price
@@ -64,15 +65,15 @@ class Question:
 
 
 class Theme:
-    questions = dict()
 
-    def __init__(self, name: str):
+    def __init__(self, name):
         self.name = name
+        self.questions = dict()
 
-    def add_question(self, q: Question):
+    def add_question(self, q):
         self.questions[q.get_price()] = q
 
-    def get_question(self, p: int):
+    def get_question(self, p):
         return self.questions[p]
 
     def __str__(self):
@@ -80,15 +81,15 @@ class Theme:
 
 
 class Round:
-    themes = dict()
 
-    def __init__(self, name: str):
+    def __init__(self, name):
         self.name = name
+        self.themes = dict()
 
-    def add_theme(self, t: Theme):
+    def add_theme(self, t):
         self.themes[str(t)] = t
 
-    def get_theme(self, nm: str) -> Theme:
+    def get_theme(self, nm):
         return self.themes[nm]
 
     def __str__(self):
@@ -99,23 +100,23 @@ class Package:
     author = ''
     rounds = list()
 
-    def set_author(self, a: str):
+    def set_author(self, a):
         self.author = a
 
-    def get_author(self) -> str:
+    def get_author(self):
         return self.author
 
-    def add_round(self, round: Round):
+    def add_round(self, round):
         self.rounds.append(round)
 
-    def get_round(self, num: int):
+    def get_round(self, num):
         return self.rounds[num]
 
     def __str__(self):
         return f"{self.author}\n\n" + '\n'.join(str(i) for i in self.rounds)
 
 
-def parse_package(packet_path: str):
+def parse_package(packet_path):
 
     with zipfile.ZipFile(packet_path) as file:
         file_list = file.namelist()
@@ -156,11 +157,11 @@ def parse_package(packet_path: str):
                     if (tp := atom.get('type')):
                         match tp:
                             case 'image':
-                                im = atom.text
+                                im = 'Images/' + atom.text[1:]
                             case 'voice':
-                                snd = atom.text
+                                snd = 'Audio/' + atom.text[1:]
                             case 'video':
-                                vd = atom.text
+                                vd = 'Video/' + atom.text[1:]
                             case 'marker':   #всё, что дальше - ответ
                                 marker_flag = True
                                 break
@@ -178,11 +179,11 @@ def parse_package(packet_path: str):
                         if (tp := atom.get('type')):
                             match tp:
                                 case 'image':
-                                    im = atom.text
+                                    im = 'Images/' + atom.text[1:]
                                 case 'voice':
-                                    snd = atom.text
+                                    snd = 'Audio/' + atom.text[1:]
                                 case 'video':
-                                    vd = atom.text
+                                    vd = 'Video/' + atom.text[1:]
                                 case _:
                                     txt = atom.text
                 else:
@@ -197,3 +198,12 @@ def parse_package(packet_path: str):
     return p
 
 ##p = parse_package(sys.argv[1])
+##for i in p.rounds:
+##    print(i.name)
+##    for j in i.themes:
+##        print(j)
+##    print('\n\n\n')
+
+#print(p.get_round(5).get_theme('Футболисты').get_question('100').get_answer().get_right())
+#print(p.get_round(5).get_theme('Угадай фильм по составу актеров').get_question('1200').get_image())
+#print(p.get_round(5).get_theme('Футболисты').get_question('100').get_image())
