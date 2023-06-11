@@ -112,7 +112,9 @@ async def main(game_name, real_password, package_path, players_count):
     print("ALL ROUNDS", package.rounds)
     print("CUR_ROUND", cur_round)
     themes = cur_round.themes
-    cur_table = {th: {str(q): themes[th].get_question(q).get_text() for q in themes[th].questions} for th in themes}
+    cur_table = {th: {str(q): (themes[th].get_question(q).get_text(),
+                      themes[th].get_question(q).get_answer().get_right()) 
+                      for q in themes[th].questions} for th in themes}
     table_size = (len(cur_table), max([len(themes[th].questions) for th in themes]))
     print("TABLE SIZE", table_size)
     game_params = {"table_size": table_size,
@@ -122,7 +124,7 @@ async def main(game_name, real_password, package_path, players_count):
                    "players": []}   
     password = real_password
     print("STARING SERVER")
-    server = await asyncio.start_server(SIG, '0.0.0.0', 1329)
+    server = await asyncio.start_server(SIG, '0.0.0.0', 1321)
     print("SERVER STARTED")
     async with server:
         await server.serve_forever()
