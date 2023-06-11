@@ -167,6 +167,8 @@ def parse_package(packet_path):
                                 break
                             case _:
                                 txt = atom.text
+                    else:
+                        txt = atom.text
                 Q = Question(pr, txt, im, snd, vd)
                 if marker_flag:
                     r_ans = None
@@ -186,6 +188,8 @@ def parse_package(packet_path):
                                     vd = 'Video/' + atom.text[1:]
                                 case _:
                                     txt = atom.text
+                        else:
+                            txt = atom.text
                 else:
                     r_ans = q.find('ns:right', namespace)
                     r_ans = r_ans.find('ns:answer', namespace).text
