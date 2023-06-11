@@ -10,7 +10,7 @@ import gettext
 clients = {}
 master = ''
 password = 'password'
-pack_string = ''
+game_params = None
 
 
 async def SIG(reader, writer):
@@ -115,10 +115,20 @@ async def SIG(reader, writer):
 
 async def main(game_name, real_password, package_path, players_count):
     """Запуск сервера."""
-    global password
+    global password, pack_string
+    package = parse_package(package_path)
+    cur_round = package.rounds[1]
+    print("ALL ROUNDS", package.rounds)
+    print("CUR_ROUND", cur_round)
+    themes = cur_round.themes
+    cur_table = {th: [q for q in themes[th].questions] for th in themes}
+    table_size = (len(cur_table), len(cur_table[list(cur_table.keys())[0]]))
+    print("TABLE SIZE", table_size)
+    game_params = {"table_size": table_size, "table": cur_table, "game_name": game_name, "players_count": players_count, "players": ["masha" for i in range(players_count)]}
+    pack_string = str(game_params)    
     password = real_password
     print("STARING SERVER")
-    server = await asyncio.start_server(SIG, '0.0.0.0', 1332)
+    server = await asyncio.start_server(SIG, '0.0.0.0', 1321)
     print("SERVER STARTED")
     async with server:
         await server.serve_forever()

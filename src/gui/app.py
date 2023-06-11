@@ -19,8 +19,15 @@ import multiprocessing
 import threading
 import time
 import socket
+import shlex
 
 sock = None
+widgets = None
+red = [1, 0, 0, 1] 
+green = [0, 1, 0, 1] 
+blue = [0, 0, 1, 1] 
+purple = [1, 0, 1, 1]
+white = [1, 1, 1, 1]
 
 class MainMenu(Screen):
     def __init__(self, **kwargs):
@@ -144,25 +151,37 @@ class JoinGame(Screen):
         # Переход на экран игры после присоединения к комнате
         self.manager.current = "game"
 
-def choose_button(th, q, q_label):
-    def func(arg):
-        arg.text = ''
-        q_label.text = f"question {th} {q}"
-        global sock
-        request = f"choose {th} {q}"
-        print(f"CLIENT {request}")
-        sock.send((request+'\n').encode())
-    return func
-    
-def answer_button():
+
+def empty_func(*args):
+    pass
+
+
+def choose_button(th, q):
     def func(arg):
         global sock
-        request = "answer"
+        request = f"choose '{th}' {q}"
         print(f"CLIENT {request}")
         sock.send((request+'\n').encode())
     return func
 
-def result_button():
+
+def answer_button():
+    global widgets
+    def func():
+        global sock
+        request = f"answer {widgets['text_fields']['answer'].text}"
+        widgets['text_fields']['answer'].background_color = (0, 0, 0, 1/255)
+        widgets['text_fields']['answer'].text = ''
+        widgets['buttons']['answer'].background_color = red
+        widgets['buttons']['answer'].text = ''
+        widgets['text_fields']['answer'].readonly = True
+        new_func = empty_func
+        widgets['buttons']['answer'].on_release = new_func
+        sock.send((request+'\n').encode())
+    return func
+
+
+def result_button(arg):
     ## вместо result должен быть текст из текстового поля с ответом пользователя
     def func(arg):
         global sock
@@ -171,16 +190,30 @@ def result_button():
         sock.send((request+'\n').encode())
     return func
 
+
 def my_read():
     """Функция, читающая из сокета."""
-    global sock
+    global sock, widgets
     time.sleep(0.1)
     while True:
         res = sock.recv(4096)
-        res = res.decode().split()
+        res = res.decode()
+        res = shlex.split(res)
+        print(f"READER HAS GOT {res}")
         match res[0]:
             case "choose":
                 print("CHOOSE", res)
+                widgets['buttons']['questions'][res[1]][res[2]].text = ''
+                widgets['buttons']['questions'][res[1]][res[2]].on_release = empty_func
+                widgets['text_fields']['answer'].background_color = white
+                widgets['text_fields']['answer'].readonly = False
+                widgets['buttons']['answer'].background_color = green
+                widgets['buttons']['answer'].color = 'black'
+                widgets['buttons']['answer'].text = 'Ответить'
+                widgets['buttons']['answer'].font_size = 40
+                new_func = answer_button()
+                widgets['buttons']['answer'].on_release = new_func
+                widgets['labels']['q_label'].text = f"question {res[1]}, {res[2]}"
             case "answer":
                 print("ANSWER", res)
             case "result":
@@ -190,7 +223,7 @@ def my_read():
 
 class Game(Screen): 
     def __init__(self, game_name, password, package_path, players_count, **kwargs):
-        global sock
+        global sock, widgets
         package = parse_package(package_path)
         cur_round = package.rounds[1]
         print("ALL ROUNDS", package.rounds)
@@ -202,7 +235,7 @@ class Game(Screen):
         game_params = {"table_size": table_size, "table": cur_table, "game_name": game_name, "players_count": players_count, "players": ["masha" for i in range(players_count)]}
         self.player_name = 'master_oogway'
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(('localhost', 1332))
+        sock.connect(('localhost', 1321))
         sock.send((f"{self.player_name}\n").encode())
         res = sock.recv(4096)
         print(f"RECEIVED {res}")
@@ -217,58 +250,86 @@ class Game(Screen):
         
 
         super(Game, self).__init__(**kwargs)
+        widgets = {'buttons': {}, 'labels': {}, 'text_fields': {}, 'layouts': {}}
         layout = BoxLayout(orientation='vertical')
         players = game_params["players"]
         players_layout = GridLayout(rows=2, cols=len(players), spacing=10)
-        ##for p in players:
-        ##    players_layout.add_widget() #some pic
         for p in players:
-            players_layout.add_widget(Label(text=p, font_size=20)) #name
+            cur_label = Label(text=p, font_size=20)
+            widgets['labels'].setdefault('players', {})
+            widgets['labels']['players'][p] = cur_label
+            players_layout.add_widget(cur_label) #name
         for p in players:
+            cur_label = Label(text='0', font_size=20)
+            widgets['labels'].setdefault('scores', {})
+            widgets['labels']['scores'][p] = cur_label
             players_layout.add_widget(Label(text='0', font_size=20)) #score
             
         game_field = GridLayout(cols=2, padding=10, spacing=10)
         q_table = GridLayout(cols=game_params['table_size'][1]+1, padding=10, spacing=10)
         q_label = Label(text='Ищи вопрос тут', font_size=40)
         for th in game_params['table']:
-            q_table.add_widget(Label(text=th, font_size=20))
+            cur_label = Label(text=th, font_size=20)
+            widgets['buttons'].setdefault('questions', {})
+            widgets['labels'].setdefault('themes', {})
+            widgets['labels']['themes'][th] = cur_label
+            q_table.add_widget(cur_label)
             for q in game_params['table'][th]:
-                but_func = choose_button(th, q, q_label)
+                but_func = choose_button(th, q)
                 button = Button(
                     text=str(q),
                     size_hint=(1, 0.2),
                     on_release=but_func,
                 )
+                widgets['buttons']['questions'].setdefault(th, {})
+                widgets['buttons']['questions'][th][str(q)] = button
                 q_table.add_widget(button)
+        widgets['labels']['q_label'] = q_label
+        widgets['layouts']['table'] = q_table
         game_field.add_widget(q_table)
         game_field.add_widget(q_label)
+        
         gamer_tools = BoxLayout(orientation='horizontal')
-        gamer_tools.add_widget(Label(text='4:20', size=(10,10)))
-        gamer_tools.add_widget(Button(text='Кнопка'))
+        timer = Label(text='4:20', size=(10,10))
+        widgets['labels']['timer'] = q_label
+        gamer_tools.add_widget(timer)
+        
+        master = False
+        if master:
+            answers = BoxLayout(orientation='vertical')
+            right_ans = Label(text='Верный ответ:')
+            widgets['labels']['right_ans'] = right_ans
+            answers.add_widget(right_ans)
+            curr_ans = Label(text='Ответ игрока')
+            widgets['labels']['curr_ans'] = curr_ans
+            answers.add_widget(curr_ans)
+            gamer_tools.add_widget(answers)
+            
+            buttons = BoxLayout(orientation='vertical')
+            button_accept = Button(text='Принять')
+            widgets['buttons']['accept'] = button_accept
+            buttons.add_widget(button_accept)
+            button_reject = Button(text='Отклонить')
+            widgets['buttons']['reject'] = button_reject
+            buttons.add_widget(button_reject)
+            gamer_tools.add_widget(buttons)
+        else:
+            ans_button = Button(text='', background_color = red)
+            widgets['buttons']['answer'] = ans_button
+            gamer_tools.add_widget(ans_button)
+            ans_field = TextInput(background_color=(0, 0, 0, 1/255), readonly=True)
+            widgets['text_fields']['answer'] = ans_field
+            gamer_tools.add_widget(ans_field)
         
         layout.add_widget(players_layout)
         layout.add_widget(game_field)
         layout.add_widget(gamer_tools)
+        widgets['layouts']['players'] = players_layout
+        widgets['layouts']['game'] = game_field
+        widgets['layouts']['tools'] = gamer_tools
+        widgets['layouts']['main'] = layout
         self.add_widget(layout)
-        ##func = choose_button("animals", 100)
-        ##button = Button(
-        ##            text="test choose",
-        ##            on_release=func,
-        ##        )
-        ##self.layout.add_widget(button)
-        ##func = answer_button()
-        ##button = Button(
-        ##            text="test answer",
-        ##            on_release=func,
-        ##        )
-        ##self.layout.add_widget(button)
-        ##func = result_button()
-        ##button = Button(
-        ##            text="test result",
-        ##            on_release=func,
-        ##        )
-        ##self.layout.add_widget(button)
-        ##self.add_widget(self.layout)
+        
 
 
 class Rules(Screen):
