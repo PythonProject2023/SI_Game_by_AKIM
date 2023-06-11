@@ -6,6 +6,7 @@ import copy
 import locale
 import os
 import gettext
+from parser import parse_package
 
 clients = {}
 master = ''
@@ -20,7 +21,7 @@ async def SIG(reader, writer):
     а также посылает ответы пользователю или широковещательные сообщения.
     """
     print("HERE WE GO")
-    global clients, master, password
+    global clients, master, password, game_params
     to_login = asyncio.create_task(reader.readline())
     res = await to_login
     to_pass = asyncio.create_task(reader.readline())
@@ -40,6 +41,7 @@ async def SIG(reader, writer):
         await writer.drain()
 
     res = await to_pass
+    to_get = asyncio.create_task(reader.readline())
     got_password = res.decode()[:-1]
     print(f"{got_password} received")
     if got_password == password:
@@ -51,7 +53,11 @@ async def SIG(reader, writer):
         writer.write(("sorry").encode())
         await writer.drain()
         return False
-                
+
+    game_params['players'].append(name)
+    await to_get
+    writer.write(str(game_params).encode())
+    await writer.drain()   
     clients[name] = asyncio.Queue()
 ##    print(name, 'connected')
 
@@ -115,20 +121,23 @@ async def SIG(reader, writer):
 
 async def main(game_name, real_password, package_path, players_count):
     """Запуск сервера."""
-    global password, pack_string
+    global password, game_params
     package = parse_package(package_path)
     cur_round = package.rounds[1]
     print("ALL ROUNDS", package.rounds)
     print("CUR_ROUND", cur_round)
     themes = cur_round.themes
-    cur_table = {th: [q for q in themes[th].questions] for th in themes}
+    cur_table = {th: {str(q): themes[th].questions[q].text for q in themes[th].questions} for th in themes}
     table_size = (len(cur_table), len(cur_table[list(cur_table.keys())[0]]))
     print("TABLE SIZE", table_size)
-    game_params = {"table_size": table_size, "table": cur_table, "game_name": game_name, "players_count": players_count, "players": ["masha" for i in range(players_count)]}
-    pack_string = str(game_params)    
+    game_params = {"table_size": table_size,
+                   "table": cur_table,
+                   "game_name": game_name,
+                   "players_count": players_count,
+                   "players": []}   
     password = real_password
     print("STARING SERVER")
-    server = await asyncio.start_server(SIG, '0.0.0.0', 1321)
+    server = await asyncio.start_server(SIG, '0.0.0.0', 1336)
     print("SERVER STARTED")
     async with server:
         await server.serve_forever()

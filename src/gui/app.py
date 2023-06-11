@@ -10,7 +10,6 @@ from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen, ScreenManager
 from kivy.uix.slider import Slider
 from kivy.uix.textinput import TextInput
-from parser import parse_package
 from server import server_starter
 from master_back import master_starter
 from master_back import semop_window
@@ -23,6 +22,7 @@ import shlex
 
 sock = None
 widgets = None
+game_params = None
 red = [1, 0, 0, 1] 
 green = [0, 1, 0, 1] 
 blue = [0, 0, 1, 1] 
@@ -193,7 +193,7 @@ def result_button(arg):
 
 def my_read():
     """Функция, читающая из сокета."""
-    global sock, widgets
+    global sock, widgets, game_params
     time.sleep(0.1)
     while True:
         res = sock.recv(4096)
@@ -213,7 +213,7 @@ def my_read():
                 widgets['buttons']['answer'].font_size = 40
                 new_func = answer_button()
                 widgets['buttons']['answer'].on_release = new_func
-                widgets['labels']['q_label'].text = f"question {res[1]}, {res[2]}"
+                widgets['labels']['q_label'].text = f"question {game_params['table'][res[1]][res[2]]}"
             case "answer":
                 print("ANSWER", res)
             case "result":
@@ -223,19 +223,19 @@ def my_read():
 
 class Game(Screen): 
     def __init__(self, game_name, password, package_path, players_count, **kwargs):
-        global sock, widgets
-        package = parse_package(package_path)
-        cur_round = package.rounds[1]
-        print("ALL ROUNDS", package.rounds)
-        print("CUR_ROUND", cur_round)
-        themes = cur_round.themes
-        cur_table = {th: [q for q in themes[th].questions] for th in themes}
-        table_size = (len(cur_table), len(cur_table[list(cur_table.keys())[0]]))
-        print("TABLE SIZE", table_size)
-        game_params = {"table_size": table_size, "table": cur_table, "game_name": game_name, "players_count": players_count, "players": ["masha" for i in range(players_count)]}
+        global sock, widgets, game_params
+        ##package = parse_package(package_path)
+        ##cur_round = package.rounds[1]
+        ##print("ALL ROUNDS", package.rounds)
+        ##print("CUR_ROUND", cur_round)
+        ##themes = cur_round.themes
+        ##cur_table = {th: [q for q in themes[th].questions] for th in themes}
+        ##table_size = (len(cur_table), len(cur_table[list(cur_table.keys())[0]]))
+        ##print("TABLE SIZE", table_size)
+        ##game_params = {"table_size": table_size, "table": cur_table, "game_name": game_name, "players_count": players_count, "players": ["masha" for i in range(players_count)]}
         self.player_name = 'master_oogway'
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(('localhost', 1321))
+        sock.connect(('localhost', 1336))
         sock.send((f"{self.player_name}\n").encode())
         res = sock.recv(4096)
         print(f"RECEIVED {res}")
@@ -247,7 +247,8 @@ class Game(Screen):
         reader_thread = threading.Thread(target = my_read, daemon = True)
         reader_thread.start()
         print("Started reader")
-        
+        sock.send(('give me a pack' + '\n').encode())
+        game_params = eval(sock.recv(8192).decode())
 
         super(Game, self).__init__(**kwargs)
         widgets = {'buttons': {}, 'labels': {}, 'text_fields': {}, 'layouts': {}}
