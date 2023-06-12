@@ -29,6 +29,8 @@ active_score = 0
 reject_counts = 0
 # флаг, определяющий есть в игре активный вопрос или нет (для игрока)
 flag_passive = True
+# флаг, который блокирует/разблокирует работу таймера
+flag_timer = False
 red = [1, 0, 0, 1] 
 green = [0, 1, 0, 1] 
 blue = [0, 0, 1, 1] 
@@ -147,7 +149,7 @@ class JoinGame(Screen):
 
     def join_game(self, *args):
         game_name = self.game_name.text
-        password = self.password.textquestion_cost
+        password = self.password.text
         player_name = self.player_name.text
 
         print("Присоединение к игре")
@@ -233,7 +235,7 @@ def accept_button(player_name):
 def client_read(player_name):
     """Функция, читающая из сокета и меняющая интерфейс
       в соответсвии с получаемыми сообщениями (для обычных игроков)"""
-    global sock, widgets, game_params, active_score, flag_passive
+    global sock, widgets, game_params, active_score, flag_passive, flag_timer
     time.sleep(0.1)
     while True:
         # получаем сообщение и разбиавем его на части
@@ -267,10 +269,13 @@ def client_read(player_name):
                 # Локаль
                 widgets['labels']['info'].text = f"info: ТЕКУЩИЙ ВОПРОС: {[res[1]]}, {[res[2]]}"
                 widgets['labels']['info'].text_size = widgets['labels']['info'].size
+                widgets['labels']['timer'].text = '00:30'
+                flag_timer = True
             case "answer":
             # сообщение от сервера начинается с answer, если кто-то из игроков отослал ответ ведущему
             # общий формат сообщения от сервера следующий:
             # answer - res[0] <имя ответчика> - res[1] <сам по себе ответ> - res[2]
+                flag_timer = False
                 if res[1] != player_name:
                     widgets['buttons']['answer'].background_color = red
                     widgets['buttons']['answer'].on_release = empty_func
@@ -300,6 +305,7 @@ def client_read(player_name):
                     new_func = empty_func
                     widgets['buttons']['answer'].on_release = new_func
                     widgets['labels']['q_label'].text = ""
+                    widgets['labels']['timer'].text = '00:00'
                 else:
                     if res[2] == player_name:
                         # Локаль
@@ -311,6 +317,7 @@ def client_read(player_name):
                             widgets['buttons']['answer'].background_color = green
                             new_func = answer_button(player_name)
                             widgets['buttons']['answer'].on_release = new_func
+                    widgets['labels']['info'].text_size = widgets['labels']['info'].size
                     print(f"REJECT FINISH {game_params['cur_players'].index(None)}, {int(res[3])}")
                     if None in game_params['cur_players']:
                         check_ind = game_params['cur_players'].index(None)-1
@@ -328,7 +335,23 @@ def client_read(player_name):
                         widgets['text_fields']['answer'].readonly = True
                         new_func = empty_func
                         widgets['buttons']['answer'].on_release = new_func
-                    
+                        widgets['labels']['timer'].text = '00:00'
+                    else:
+                        flag_timer = True
+            case "finish":
+                flag_timer = False
+                flag_passive = True
+                widgets['labels']['info'].text = f"info: time has gone"
+                widgets['labels']['info'].text_size = widgets['labels']['info'].size
+                widgets['labels']['q_label'].text = ""
+                widgets['text_fields']['answer'].background_color = (0, 0, 0, 1/255)
+                widgets['text_fields']['answer'].text = ''
+                widgets['buttons']['answer'].background_color = red
+                widgets['buttons']['answer'].text = ''
+                widgets['text_fields']['answer'].readonly = True
+                new_func = empty_func
+                widgets['buttons']['answer'].on_release = new_func
+                widgets['labels']['timer'].text = '00:00'    
             case "connect":
             # сообщение от сервера начинается с connect, если кто-то подключился
             # общий формат сообщения от сервера следующий:
@@ -346,7 +369,7 @@ def client_read(player_name):
 
 # ведущему приезжают такие же запросы от сервера, что и клиенту
 def master_read():
-    global sock, widgets, game_params, reject_counts
+    global sock, widgets, game_params, reject_counts, flag_timer
     time.sleep(0.1)
     while True:
         res = sock.recv(4096)
@@ -369,8 +392,11 @@ def master_read():
                 # Локаль
                 widgets['labels']['info'].text = f"info: ТЕКУЩИЙ ВОПРОС: {[res[1]]}, {[res[2]]}"
                 widgets['labels']['info'].text_size = widgets['labels']['info'].size
+                widgets['labels']['timer'].text = '00:30'
+                flag_timer = True
             case "answer":
                 # Локаль
+                flag_timer = False
                 widgets['labels']['curr_ans'].text = f"Ответ игрока {res[1]}: {res[2]}"
                 widgets['labels']['curr_ans'].text_size = widgets['labels']['curr_ans'].size
                 new_func = accept_button(res[1])
@@ -383,6 +409,7 @@ def master_read():
                 if res[1] == 'accept':
                     widgets['labels']['q_label'].text = ""
                     widgets['labels']['right_ans'].text = ""
+                    widgets['labels']['timer'].text = '00:00'
                     # Локаль
                     widgets['labels']['info'].text = f"info: Игрок {res[2]} ответил правильно"
                     widgets['labels']['info'].text_size = widgets['labels']['info'].size
@@ -399,6 +426,17 @@ def master_read():
                     if check_ind == int(res[3]):
                         widgets['labels']['q_label'].text = ""
                         widgets['labels']['right_ans'].text = ""
+                        widgets['labels']['timer'].text = '00:00'
+                    else:
+                        flag_timer = True
+            case "finish":
+                flag_timer = False
+                widgets['labels']['q_label'].text = ""
+                widgets['labels']['right_ans'].text = ""
+                widgets['labels']['timer'].text = '00:00'
+                # Локаль
+                widgets['labels']['info'].text = f"info: time has gone"
+                widgets['labels']['info'].text_size = widgets['labels']['info'].size
             case "connect":
                 # Локаль
                 widgets['labels']['info'].text = f"info: Игрок {res[1]} подключился"
@@ -410,12 +448,38 @@ def master_read():
                 widgets['labels']['scores'][res[1]] = widgets['labels']['scores'][f"player_{free_place}"]
 
 
+def timer_func(master):
+    global widgets, flag_timer, sock
+    while True:
+        time.sleep(1)
+        if flag_timer:
+            cur = widgets['labels']['timer'].text.split(':')
+            minutes = int(cur[0])
+            seconds = int(cur[1])
+            if seconds > 0:
+                cur[1] = str(seconds-1)
+            else:
+                if minutes > 0:
+                    cur[0] = str(minutes-1)
+                    cur[1] = '59'
+                else:
+                    if master:
+                        request = "finish"
+                        sock.send((request+'\n').encode())
+            if len(cur[0]) == 1:
+                cur[0] = '0' + cur[0]
+            if len(cur[1]) == 1:
+                cur[1] = '0' + cur[1]
+
+            widgets['labels']['timer'].text = f"{cur[0]}:{cur[1]}"
+
+
 class Game(Screen): 
     def __init__(self, master, password, player_name, **kwargs):
         global sock, widgets, game_params
         # Установка соединения с сервером
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(('localhost', 1321))
+        sock.connect(('localhost', 1328))
         sock.send((f"{player_name}\n").encode())
         res = sock.recv(4096)
         print(f"RECEIVED {res}")
@@ -502,6 +566,9 @@ class Game(Screen):
         
         gamer_tools = BoxLayout(orientation='horizontal')
         # Лейбл для вывода сообщений через "info:"
+        timer = Label(text='00:00', size=(10,10))
+        widgets['labels']['timer'] = timer
+        gamer_tools.add_widget(timer)
         info = Label(text='info:', size=(10,10))
         widgets['labels']['info'] = info
         gamer_tools.add_widget(info)
@@ -558,6 +625,9 @@ class Game(Screen):
         else:
             reader_thread = threading.Thread(target = client_read, args = (player_name,), daemon = True)
         reader_thread.start()
+        print("starting timer")
+        timer_thread = threading.Thread(target = timer_func, args = (master,), daemon = True)
+        timer_thread.start()
         
 
 

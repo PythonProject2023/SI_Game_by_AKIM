@@ -124,7 +124,7 @@ async def main(game_name, real_password, package_path, players_count):
                    "players": []}   
     password = real_password
     print("STARING SERVER")
-    server = await asyncio.start_server(SIG, '0.0.0.0', 1321)
+    server = await asyncio.start_server(SIG, '0.0.0.0', 1328)
     print("SERVER STARTED")
     async with server:
         await server.serve_forever()
