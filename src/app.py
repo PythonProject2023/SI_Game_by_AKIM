@@ -115,7 +115,7 @@ class CreateGame(Screen):
         server_proc.start()
         time.sleep(0.3)
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(('localhost', 1313))
+        sock.connect(('localhost', 1350))
         sock.send(("master__oogway\n").encode())
         res = sock.recv(4096)
         sock.send((password + '\n').encode())
@@ -159,7 +159,7 @@ class JoinGame(Screen):
         password = self.password.text
         player_name = self.player_name.text
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(('localhost', 1313))
+        sock.connect(('localhost', 1350))
         sock.send((f"{player_name}\n").encode())
         res = sock.recv(4096).decode()
         if res == 'sorry':
@@ -738,15 +738,16 @@ class Game(Screen):
             global sock, finish_flag, server_proc
             finish_flag = True
             self.reader_thread.join()
-            print("READER THREAD DONE")
             self.timer_thread.join()
-            print("TIMER THREAD DONE")
             sock.shutdown(socket.SHUT_RDWR)
             sock.close()
             if master:
                 server_proc.kill()
-            self.manager.current = 'main_menu'
 
+            
+            self.manager.current = 'main_menu'
+            if self.manager.has_screen('game'):
+               self.manager.remove_widget(self.manager.get_screen('game'))
         return switch
     
 
