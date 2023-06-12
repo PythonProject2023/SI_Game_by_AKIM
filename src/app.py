@@ -17,6 +17,7 @@ import time
 import socket
 import shlex
 
+
 # сокет
 sock = None
 # словарь с виджетами
@@ -105,19 +106,9 @@ class CreateGame(Screen):
         password = self.password.text
         players_count = int(self.players_slider.value)
         package_path = self.package_path.text
-
-
         # создание комнаты
-        print("Создание комнаты")
-        print(f"Название игры: {game_name}")
-        print(f"Пароль: {password}")
-        print(f"Количество игроков: {players_count}")
-        print(f"Путь к пакету: {package_path}")
-
-        print("HELLO THERE")
         server_thread = multiprocessing.Process(target = server_starter, args=(game_name, password, package_path, players_count))
         server_thread.start()
-        print("HELLO PUPPY")
         time.sleep(0.1)
         self.manager.add_widget(Game(True, password, "master_oogway", name="game"))       
         # Переход на экран игры после создания комнаты
@@ -151,11 +142,6 @@ class JoinGame(Screen):
         game_name = self.game_name.text
         password = self.password.text
         player_name = self.player_name.text
-
-        print("Присоединение к игре")
-        print(f"Название игры: {game_name}")
-        print(f"Пароль: {password}")
-        print(f"Ваше имя: {player_name}")
 
         self.manager.add_widget(Game(False, password, player_name, name="game"))
         # Переход на экран игры после присоединения к комнате
@@ -210,7 +196,6 @@ def reject_button(player_name):
         widgets['buttons']['reject'].on_release = empty_func
         widgets['buttons']['reject'].background_color = red
         request = f"verdict reject {player_name} {reject_counts}"
-        print(f"MASTER {request}")
         sock.send((request+'\n').encode())
     return func
 
@@ -227,7 +212,6 @@ def accept_button(player_name):
         widgets['buttons']['reject'].on_release = empty_func
         widgets['buttons']['reject'].background_color = red
         request = f"verdict accept {player_name}"
-        print(f"MASTER {request}")
         sock.send((request+'\n').encode())
     return func
 
@@ -242,7 +226,6 @@ def client_read(player_name):
         res = sock.recv(4096)
         res = res.decode()
         res = shlex.split(res)
-        print(f"READER HAS GOT {res}")
         match res[0]:
             case "choose":
             # сообщение от сервера начинается с choose, если кто-то выбрал кнопку с ценой вопроса
@@ -250,7 +233,6 @@ def client_read(player_name):
             # общий формат сообщения от сервера следующий:
             # choose - res[0] <theme> - res[1] <question_cost> - res[2]
                 flag_passive = False
-                print("CHOOSE", res)
                 active_score = res[2]
                 widgets['buttons']['questions'][res[1]][res[2]].text = ''
                 widgets['buttons']['questions'][res[1]][res[2]].on_release = empty_func
@@ -318,7 +300,6 @@ def client_read(player_name):
                             new_func = answer_button(player_name)
                             widgets['buttons']['answer'].on_release = new_func
                     widgets['labels']['info'].text_size = widgets['labels']['info'].size
-                    print(f"REJECT FINISH {game_params['cur_players'].index(None)}, {int(res[3])}")
                     if None in game_params['cur_players']:
                         check_ind = game_params['cur_players'].index(None)-1
                     else:
@@ -375,12 +356,10 @@ def master_read():
         res = sock.recv(4096)
         res = res.decode()
         res = shlex.split(res)
-        print(f"READER HAS GOT {res}")
         match res[0]:
             case "choose":
                 reject_counts = 0
                 active_score = res[2]
-                print("CHOOSE", res)
                 widgets['buttons']['questions'][res[1]][res[2]].text = ''
                 # Локаль
                 widgets['labels']['q_label'].text = f"ТЕКСТ ВОПРОСА: {game_params['table'][res[1]][res[2]][0]}"
@@ -482,152 +461,151 @@ class Game(Screen):
         sock.connect(('localhost', 1328))
         sock.send((f"{player_name}\n").encode())
         res = sock.recv(4096)
-        print(f"RECEIVED {res}")
-        print(password.encode())
         sock.send((password + '\n').encode())
         res = sock.recv(4096)
         # Если пароль неверен, то здесь в res будет "sorry" вместо "hello"
-        print(f"RECEIVED {res}")
-        print("Starting reader")
-        print("Started reader")
-        sock.send(('give me a pack' + '\n').encode())
-        # Получаем от сервера строку с описанем игры
-        game_params = eval(sock.recv(8192).decode())
-        game_params['cur_players'] = []
+        if res == 'sorry':
+            sock.shutdown()
+            sock.close()
+            self.manager.current = "join_game"
+        else:
+            sock.send(('give me a pack' + '\n').encode())
+            # Получаем от сервера строку с описанем игры
+            game_params = eval(sock.recv(8192).decode())
+            game_params['cur_players'] = []
 
-        super(Game, self).__init__(**kwargs)
-        # присваиваме ГЛОБАЛЬНОЙ переменной widgets шаблонный вид.
-        # Далее, перед добавлением любого виджета на какой-либо layout 
-        # он будет добавляться в какую-то ячейку словаря widgets
-        widgets = {'buttons': {}, 'labels': {}, 'text_fields': {}, 'layouts': {}}
-        layout = BoxLayout(orientation='vertical')
-        # текущий список игроков, включая ведущего и нас
-        players = game_params["players"]
-        # колво игроков
-        cur_players = len(players)
-        # максимально допустимое число игроков (указано при создании пати)
-        players_count = game_params["players_count"]
-        players_layout = GridLayout(rows=2, cols=players_count, spacing=10)
-        for p in range(players_count):
-            # если текущий индекс есть в фактическом массиве игроков,
-            # то берем имя от туда, иначе шаблон: "player_i"
-            if p < cur_players:
-                cur_text = players[p]
-            else:
-                cur_text = f"player_{p}"
-            # Лейблы с именами игроков
-            cur_label = Label(text=cur_text, font_size=20)
-            widgets['labels'].setdefault('players', {})
-            widgets['labels']['players'][cur_text] = cur_label
-            players_layout.add_widget(cur_label) #name
-        for p in range(players_count):
-            # То же самое, что и предыдущий виджет, но для лейблов с очками
-            if p < cur_players:
-                cur_text = players[p]
-                game_params["cur_players"].append(cur_text)
-            else:
-                cur_text = f"player_{p}"
-                game_params["cur_players"].append(None)
-            cur_label = Label(text='0', font_size=20)
-            widgets['labels'].setdefault('scores', {})
-            widgets['labels']['scores'][cur_text] = cur_label
-            players_layout.add_widget(cur_label) #score
-            
-        game_field = GridLayout(cols=2, padding=10, spacing=10)
-        q_table = GridLayout(cols=game_params['table_size'][1]+1, padding=10, spacing=10)
-        # Локаль
-        q_label = Label(text='Ищи вопрос тут', font_size=40)
-        for th in game_params['table']:
-            # Лейблы с названиями тем
-            cur_label = Label(text=th, font_size=20)
-            cur_label.text_size = cur_label.size
-            widgets['buttons'].setdefault('questions', {})
-            widgets['labels'].setdefault('themes', {})
-            widgets['labels']['themes'][th] = cur_label
-            q_table.add_widget(cur_label)
-            for q in game_params['table'][th]:
-                if master:
-                    but_func = empty_func
+            super(Game, self).__init__(**kwargs)
+            # присваиваме ГЛОБАЛЬНОЙ переменной widgets шаблонный вид.
+            # Далее, перед добавлением любого виджета на какой-либо layout 
+            # он будет добавляться в какую-то ячейку словаря widgets
+            widgets = {'buttons': {}, 'labels': {}, 'text_fields': {}, 'layouts': {}}
+            layout = BoxLayout(orientation='vertical')
+            # текущий список игроков, включая ведущего и нас
+            players = game_params["players"]
+            # колво игроков
+            cur_players = len(players)
+            # максимально допустимое число игроков (указано при создании пати)
+            players_count = game_params["players_count"]
+            players_layout = GridLayout(rows=2, cols=players_count, spacing=10)
+            for p in range(players_count):
+                # если текущий индекс есть в фактическом массиве игроков,
+                # то берем имя от туда, иначе шаблон: "player_i"
+                if p < cur_players:
+                    cur_text = players[p]
                 else:
-                    but_func = choose_button(th, q)
-                # Кнопки с ценами вопросов
-                button = Button(
-                    text=str(q),
-                    size_hint=(1, 0.2),
-                    on_release=but_func,
-                )
-                widgets['buttons']['questions'].setdefault(th, {})
-                widgets['buttons']['questions'][th][str(q)] = button
-                q_table.add_widget(button)
-        widgets['labels']['q_label'] = q_label
-        widgets['layouts']['table'] = q_table
-        game_field.add_widget(q_table)
-        game_field.add_widget(q_label)
-        
-        gamer_tools = BoxLayout(orientation='horizontal')
-        # Лейбл для вывода сообщений через "info:"
-        timer = Label(text='00:00', size=(10,10))
-        widgets['labels']['timer'] = timer
-        gamer_tools.add_widget(timer)
-        info = Label(text='info:', size=(10,10))
-        widgets['labels']['info'] = info
-        gamer_tools.add_widget(info)
-        
-        if master:
-            # Для окна ведущего
-            answers = BoxLayout(orientation='vertical')
-            # Лейбл на котором будет отображаться верный ответ
+                    cur_text = f"player_{p}"
+                # Лейблы с именами игроков
+                cur_label = Label(text=cur_text, font_size=20)
+                widgets['labels'].setdefault('players', {})
+                widgets['labels']['players'][cur_text] = cur_label
+                players_layout.add_widget(cur_label) #name
+            for p in range(players_count):
+                # То же самое, что и предыдущий виджет, но для лейблов с очками
+                if p < cur_players:
+                    cur_text = players[p]
+                    game_params["cur_players"].append(cur_text)
+                else:
+                    cur_text = f"player_{p}"
+                    game_params["cur_players"].append(None)
+                cur_label = Label(text='0', font_size=20)
+                widgets['labels'].setdefault('scores', {})
+                widgets['labels']['scores'][cur_text] = cur_label
+                players_layout.add_widget(cur_label) #score
+                
+            game_field = GridLayout(cols=2, padding=10, spacing=10)
+            q_table = GridLayout(cols=game_params['table_size'][1]+1, padding=10, spacing=10)
             # Локаль
-            right_ans = Label(text='Верный ответ:')
-            widgets['labels']['right_ans'] = right_ans
-            answers.add_widget(right_ans)
-            # Лейбл на котором будет отображаться текущий ответ игрока
-            # Локаль
-            curr_ans = Label(text='Ответ игрока')
-            widgets['labels']['curr_ans'] = curr_ans
-            answers.add_widget(curr_ans)
-            gamer_tools.add_widget(answers)
+            q_label = Label(text='Ищи вопрос тут', font_size=40)
+            for th in game_params['table']:
+                # Лейблы с названиями тем
+                cur_label = Label(text=th, font_size=20)
+                cur_label.text_size = cur_label.size
+                widgets['buttons'].setdefault('questions', {})
+                widgets['labels'].setdefault('themes', {})
+                widgets['labels']['themes'][th] = cur_label
+                q_table.add_widget(cur_label)
+                for q in game_params['table'][th]:
+                    if master:
+                        but_func = empty_func
+                    else:
+                        but_func = choose_button(th, q)
+                    # Кнопки с ценами вопросов
+                    button = Button(
+                        text=str(q),
+                        size_hint=(1, 0.2),
+                        on_release=but_func,
+                    )
+                    widgets['buttons']['questions'].setdefault(th, {})
+                    widgets['buttons']['questions'][th][str(q)] = button
+                    q_table.add_widget(button)
+            widgets['labels']['q_label'] = q_label
+            widgets['layouts']['table'] = q_table
+            game_field.add_widget(q_table)
+            game_field.add_widget(q_label)
             
-            buttons = BoxLayout(orientation='vertical')
-            # Кнопка для принятия ответа
-            # Локаль
-            button_accept = Button(text='Принять', background_color = red)
-            widgets['buttons']['accept'] = button_accept
-            buttons.add_widget(button_accept)
-            # Кнопка для отклонения ответа
-            # Локаль
-            button_reject = Button(text='Отклонить', background_color = red)
-            widgets['buttons']['reject'] = button_reject
-            buttons.add_widget(button_reject)
-            gamer_tools.add_widget(buttons)
-        else:
-            #Для окна игрока
-            # кнопка для отправки ответа
-            ans_button = Button(text='', background_color = red)
-            widgets['buttons']['answer'] = ans_button
-            gamer_tools.add_widget(ans_button)
-            # Поле для ввода ответа
-            ans_field = TextInput(background_color=(0, 0, 0, 1/255), readonly=True)
-            widgets['text_fields']['answer'] = ans_field
-            gamer_tools.add_widget(ans_field)
-        
-        layout.add_widget(players_layout)
-        layout.add_widget(game_field)
-        layout.add_widget(gamer_tools)
-        widgets['layouts']['players'] = players_layout
-        widgets['layouts']['game'] = game_field
-        widgets['layouts']['tools'] = gamer_tools
-        widgets['layouts']['main'] = layout
-        self.add_widget(layout)
-        # для ведущего своя функция-reader
-        if master:
-            reader_thread = threading.Thread(target = master_read, daemon = True)
-        else:
-            reader_thread = threading.Thread(target = client_read, args = (player_name,), daemon = True)
-        reader_thread.start()
-        print("starting timer")
-        timer_thread = threading.Thread(target = timer_func, args = (master,), daemon = True)
-        timer_thread.start()
+            gamer_tools = BoxLayout(orientation='horizontal')
+            # Лейбл для вывода сообщений через "info:"
+            timer = Label(text='00:00', size=(10,10))
+            widgets['labels']['timer'] = timer
+            gamer_tools.add_widget(timer)
+            info = Label(text='info:', size=(10,10))
+            widgets['labels']['info'] = info
+            gamer_tools.add_widget(info)
+            
+            if master:
+                # Для окна ведущего
+                answers = BoxLayout(orientation='vertical')
+                # Лейбл на котором будет отображаться верный ответ
+                # Локаль
+                right_ans = Label(text='Верный ответ:')
+                widgets['labels']['right_ans'] = right_ans
+                answers.add_widget(right_ans)
+                # Лейбл на котором будет отображаться текущий ответ игрока
+                # Локаль
+                curr_ans = Label(text='Ответ игрока')
+                widgets['labels']['curr_ans'] = curr_ans
+                answers.add_widget(curr_ans)
+                gamer_tools.add_widget(answers)
+                
+                buttons = BoxLayout(orientation='vertical')
+                # Кнопка для принятия ответа
+                # Локаль
+                button_accept = Button(text='Принять', background_color = red)
+                widgets['buttons']['accept'] = button_accept
+                buttons.add_widget(button_accept)
+                # Кнопка для отклонения ответа
+                # Локаль
+                button_reject = Button(text='Отклонить', background_color = red)
+                widgets['buttons']['reject'] = button_reject
+                buttons.add_widget(button_reject)
+                gamer_tools.add_widget(buttons)
+            else:
+                #Для окна игрока
+                # кнопка для отправки ответа
+                ans_button = Button(text='', background_color = red)
+                widgets['buttons']['answer'] = ans_button
+                gamer_tools.add_widget(ans_button)
+                # Поле для ввода ответа
+                ans_field = TextInput(background_color=(0, 0, 0, 1/255), readonly=True)
+                widgets['text_fields']['answer'] = ans_field
+                gamer_tools.add_widget(ans_field)
+            
+            layout.add_widget(players_layout)
+            layout.add_widget(game_field)
+            layout.add_widget(gamer_tools)
+            widgets['layouts']['players'] = players_layout
+            widgets['layouts']['game'] = game_field
+            widgets['layouts']['tools'] = gamer_tools
+            widgets['layouts']['main'] = layout
+            self.add_widget(layout)
+            # для ведущего своя функция-reader
+            if master:
+                reader_thread = threading.Thread(target = master_read, daemon = True)
+            else:
+                reader_thread = threading.Thread(target = client_read, args = (player_name,), daemon = True)
+            reader_thread.start()
+            timer_thread = threading.Thread(target = timer_func, args = (master,), daemon = True)
+            timer_thread.start()
         
 
 
@@ -668,5 +646,3 @@ class MyApp(App):
         ## screen_manager.add_widget(Game(name="game"))
 
         return screen_manager
-
-MyApp().run()
