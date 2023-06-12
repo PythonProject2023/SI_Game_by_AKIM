@@ -32,6 +32,9 @@ reject_counts = 0
 flag_passive = True
 # флаг, который блокирует/разблокирует работу таймера
 flag_timer = False
+# флаг, который завершает работу треда с таймером
+finish_flag = False
+server_proc = None
 red = [1, 0, 0, 1] 
 green = [0, 1, 0, 1] 
 blue = [0, 0, 1, 1] 
@@ -102,17 +105,17 @@ class CreateGame(Screen):
         self.add_widget(self.layout)
 
     def create_room(self, *args):
-        global sock, game_params
+        global sock, game_params, server_proc
         game_name = self.game_name.text
         password = self.password.text
         players_count = int(self.players_slider.value)
         package_path = self.package_path.text
         # создание комнаты
-        server_thread = multiprocessing.Process(target = server_starter, args=(game_name, password, package_path, players_count))
-        server_thread.start()
+        server_proc = multiprocessing.Process(target = server_starter, args=(game_name, password, package_path, players_count))
+        server_proc.start()
         time.sleep(0.3)
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(('localhost', 1338))
+        sock.connect(('localhost', 1313))
         sock.send(("master__oogway\n").encode())
         res = sock.recv(4096)
         sock.send((password + '\n').encode())
@@ -121,7 +124,7 @@ class CreateGame(Screen):
         # Получаем от сервера строку с описанем игры
         game_params = eval(sock.recv(8192).decode())
         game_params['cur_players'] = []
-        self.manager.add_widget(Game(False, "master__oogway", name="game"))
+        self.manager.add_widget(Game(True, "master__oogway", name="game"))
         # Переход на экран игры после присоединения к комнате
         self.manager.current = "game"
 
@@ -156,7 +159,7 @@ class JoinGame(Screen):
         password = self.password.text
         player_name = self.player_name.text
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(('localhost', 1338))
+        sock.connect(('localhost', 1313))
         sock.send((f"{player_name}\n").encode())
         res = sock.recv(4096).decode()
         if res == 'sorry':
@@ -256,9 +259,9 @@ def client_read(player_name):
     time.sleep(0.1)
     while True:
         # получаем сообщение и разбиавем его на части
-        res = sock.recv(4096)
-        res = res.decode()
-        res = shlex.split(res)
+        res = sock.recv(8192)
+        res_str= res.decode()
+        res = shlex.split(res_str)
         match res[0]:
             case "choose":
             # сообщение от сервера начинается с choose, если кто-то выбрал кнопку с ценой вопроса
@@ -310,6 +313,7 @@ def client_read(player_name):
                     else:
                         # Локаль
                         widgets['labels']['info'].text = f"info: Игрок {res[2]} ответил правильно"
+                    widgets['labels']['info'].text_size = widgets['labels']['info'].size
                     new_score = int(widgets['labels']['scores'][res[2]].text) + int(active_score)
                     widgets['labels']['scores'][res[2]].text = str(new_score)
                     widgets['text_fields']['answer'].background_color = (0, 0, 0, 1/255)
@@ -321,6 +325,7 @@ def client_read(player_name):
                     widgets['buttons']['answer'].on_release = new_func
                     widgets['labels']['q_label'].text = ""
                     widgets['labels']['timer'].text = '00:00'
+                    # если пришло сообщение о конце раунда
                 else:
                     if res[2] == player_name:
                         # Локаль
@@ -352,6 +357,21 @@ def client_read(player_name):
                         widgets['labels']['timer'].text = '00:00'
                     else:
                         flag_timer = True
+                if res[-1] == 'next':
+                        request = 'give me a pack'
+                        sock.send((request+'\n').encode())
+            case "give":
+                max_score = 0
+                winner = 'master_oogway'
+                for pl in widgets['labels']['scores']:
+                    cur_score = int(widgets['labels']['scores'][pl].text)
+                    if cur_score > max_score:
+                        max_score = cur_score
+                        winner = pl
+                widgets['labels']['info'].text = f"Игрок {winner} победил в игре"
+                widgets['labels']['info'].text_size = widgets['labels']['info'].size
+                return True
+                
             case "finish":
                 flag_timer = False
                 flag_passive = True
@@ -386,9 +406,10 @@ def master_read():
     global sock, widgets, game_params, reject_counts, flag_timer
     time.sleep(0.1)
     while True:
-        res = sock.recv(4096)
-        res = res.decode()
-        res = shlex.split(res)
+        res = sock.recv(8192)
+        res_str = res.decode()
+        res = shlex.split(res_str)
+        print("MASTER GOT:")
         match res[0]:
             case "choose":
                 reject_counts = 0
@@ -441,6 +462,55 @@ def master_read():
                         widgets['labels']['timer'].text = '00:00'
                     else:
                         flag_timer = True
+                if res[-1] == 'next':
+                    request = 'give me a pack'
+                    sock.send((request+'\n').encode())
+            case "give":
+                max_score = 0
+                winner = 'master_oogway'
+                for pl in widgets['labels']['scores']:
+                    cur_score = int(widgets['labels']['scores'][pl].text)
+                    if cur_score > max_score:
+                        max_score = cur_score
+                        winner = widgets['labels']['players'][pl].text
+                widgets['labels']['info'].text = f"Игрок {winner} победил в игре"
+                widgets['labels']['info'].text_size = widgets['labels']['info'].size
+                return True
+##                print("CLIENT GOT PACK:", res_str[5:])
+##                new_round = eval(res_str[5:])
+##                print("ROUND:", len(new_round[0]))
+##                tmp_themes = list(widgets['labels']['themes'].keys())
+##                print("TMP THEMES: ", tmp_themes)
+##                th_counter = 0
+##                for th in new_round[0]:
+##                    # Лейблы с названиями тем
+##                    print("TH:", th)
+##                    widgets['labels']['themes'][th] = widgets['labels']['themes'][tmp_themes[th_counter]]
+##                    widgets['labels']['themes'].pop(tmp_themes[th_counter])
+##                    widgets['labels']['themes'][th].text = th
+##                    widgets['labels']['themes'][th].text_size = widgets['labels']['themes'][th].size
+##
+##                    widgets['buttons']['questions'][th] = widgets['buttons']['questions'][tmp_themes[th_counter]]
+##                    widgets['buttons']['questions'].pop(tmp_themes[th_counter])
+##                    tmp_costs = list(widgets['buttons']['questions'][th].keys())
+##                    q_counter = 0
+##                    new_q_buttons = {}
+##                    for q in new_round[0][th]:
+##                        new_q_buttons[q] =  widgets['buttons']['questions'][th][tmp_costs[q_counter]]
+##                        widgets['buttons']['questions'][th].pop(tmp_costs[q_counter])
+##                        new_q_buttons[q].text = str(q)
+##                        new_q_buttons[q].on_release = choose_button(th, q)
+##                        q_counter += 1
+##                    tmp = -1
+##                    for i in range(len(new_round[0][th]), len(tmp_costs)):
+##                        new_q_buttons[str(tmp)] = widgets['buttons']['questions'][th][tmp_costs[i]]
+##                        widgets['buttons']['questions'][th].pop(tmp_costs[i])
+##                        new_q_buttons[q].text = ''
+##                        new_q_buttons[q].on_release = empty_func
+##                    widgets['buttons']['questions'][th] = new_q_buttons
+##                    th_counter += 1
+
+
             case "finish":
                 flag_timer = False
                 widgets['labels']['q_label'].text = ""
@@ -461,9 +531,11 @@ def master_read():
 
 
 def timer_func(master):
-    global widgets, flag_timer, sock
+    global widgets, flag_timer, sock, finish_flag
     while True:
         time.sleep(1)
+        if finish_flag:
+           return 
         if flag_timer:
             cur = widgets['labels']['timer'].text.split(':')
             minutes = int(cur[0])
@@ -502,7 +574,7 @@ class Game(Screen):
         cur_players = len(players)
         # максимально допустимое число игроков (указано при создании пати)
         players_count = game_params["players_count"]
-        players_layout = GridLayout(rows=2, cols=players_count, spacing=10)
+        players_layout = GridLayout(rows=2, cols=players_count+1, spacing=10)
         for p in range(players_count):
             # если текущий индекс есть в фактическом массиве игроков,
             # то берем имя от туда, иначе шаблон: "player_i"
@@ -515,6 +587,14 @@ class Game(Screen):
             widgets['labels'].setdefault('players', {})
             widgets['labels']['players'][cur_text] = cur_label
             players_layout.add_widget(cur_label) #name
+
+        button_exit = Button(
+                    text='Exit',
+                    background_color = 'red',
+                    on_release=self.switch_to_screen(master),
+                )
+        players_layout.add_widget(button_exit)
+        
         for p in range(players_count):
             # То же самое, что и предыдущий виджет, но для лейблов с очками
             if p < cur_players:
@@ -554,6 +634,35 @@ class Game(Screen):
                 widgets['buttons']['questions'].setdefault(th, {})
                 widgets['buttons']['questions'][th][str(q)] = button
                 q_table.add_widget(button)
+            tmp_cost = -1
+            for _ in range(len(game_params['table'][th]), game_params['table_size'][1]):
+                button = Button(text = '', on_release = empty_func)
+                widgets['buttons']['questions'][th][str(tmp_cost)] = button
+                q_table.add_widget(button)
+                tmp_cost -=1
+        tmp_name = -1
+        print("COMPARE:", len(game_params['table']),  game_params['table_size'][0])
+        for _ in range(len(game_params['table']),  game_params['table_size'][0]):
+            cur_label = Label(text='', font_size=20)
+            cur_label.text_size = cur_label.size
+            widgets['buttons'].setdefault('questions', {})
+            widgets['labels'].setdefault('themes', {})
+            widgets['labels']['themes'][str(tmp_name)] = cur_label
+            q_table.add_widget(cur_label)
+            tmp_cost = -1
+            for _ in range(game_params['table_size'][1]):
+                button = Button(
+                    text='',
+                    size_hint=(1, 0.2),
+                    on_release=empty_func,
+                )
+                widgets['buttons']['questions'].setdefault(str(tmp_name), {})
+                widgets['buttons']['questions'][str(tmp_name)][str(q)] = button
+                q_table.add_widget(button)
+                tmp_cost -= 1
+            tmp_name -= 1
+
+
         widgets['labels']['q_label'] = q_label
         widgets['layouts']['table'] = q_table
         game_field.add_widget(q_table)
@@ -616,12 +725,29 @@ class Game(Screen):
         self.add_widget(layout)
         # для ведущего своя функция-reader
         if master:
-            reader_thread = threading.Thread(target = master_read, daemon = True)
+            self.reader_thread = threading.Thread(target = master_read, daemon = True)
         else:
-            reader_thread = threading.Thread(target = client_read, args = (player_name,), daemon = True)
-        reader_thread.start()
-        timer_thread = threading.Thread(target = timer_func, args = (master,), daemon = True)
-        timer_thread.start()
+            self.reader_thread = threading.Thread(target = client_read, args = (player_name,), daemon = True)
+        self.reader_thread.start()
+        self.timer_thread = threading.Thread(target = timer_func, args = (master,), daemon = True)
+        self.timer_thread.start()
+
+    
+    def switch_to_screen(self, master):
+        def switch(*args):
+            global sock, finish_flag, server_proc
+            finish_flag = True
+            self.reader_thread.join()
+            print("READER THREAD DONE")
+            self.timer_thread.join()
+            print("TIMER THREAD DONE")
+            sock.shutdown(socket.SHUT_RDWR)
+            sock.close()
+            if master:
+                server_proc.kill()
+            self.manager.current = 'main_menu'
+
+        return switch
     
 
 
